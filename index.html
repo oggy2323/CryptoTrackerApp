@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Crypto Voice Tracker Pro</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* --- Dark Modern Material UI --- */
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Roboto', sans-serif;
+            -webkit-user-select: none; /* Prevent text selection */
+            user-select: none;
+            padding-bottom: 80px;
+        }
+
+        /* Header Card */
+        .app-header {
+            background: linear-gradient(145deg, #0d47a1, #1976d2);
+            padding: 20px 15px;
+            border-bottom-left-radius: 25px;
+            border-bottom-right-radius: 25px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+            margin-bottom: 25px;
+        }
+
+        .timer-badge {
+            background-color: rgba(0,0,0,0.3);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            color: #bbdefb;
+            margin-top: 10px;
+            display: inline-block;
+        }
+
+        /* Coin Cards */
+        .coin-card {
+            background-color: #1e1e1e;
+            border-radius: 16px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: transform 0.2s ease;
+        }
+        
+        .coin-card:active {
+            transform: scale(0.98); /* Touch feedback */
+        }
+
+        .coin-icon {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #333;
+        }
+
+        .coin-name { font-size: 1.1rem; font-weight: 700; margin-bottom: 0; }
+        .coin-symbol { font-size: 0.8rem; color: #888; text-transform: uppercase; }
+        
+        .coin-price { font-size: 1.2rem; font-weight: 600; text-align: right; }
+        
+        .change-badge {
+            font-size: 0.85rem;
+            font-weight: 500;
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        /* Colors */
+        .bg-up { background-color: rgba(0, 230, 118, 0.15); color: #00e676; }
+        .bg-down { background-color: rgba(255, 82, 82, 0.15); color: #ff5252; }
+        .bg-neutral { background-color: rgba(255, 255, 255, 0.1); color: #aaa; }
+
+        /* Controls */
+        .control-panel {
+            background-color: #252525;
+            padding: 15px;
+            border-radius: 15px;
+            margin-top: 20px;
+        }
+
+        .btn-refresh {
+            width: 100%;
+            padding: 12px;
+            border-radius: 50px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(33, 150, 243, 0.4);
+        }
+
+        /* Loading Spinner Overlay */
+        #loader {
+            display: none;
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-header text-center">
+        <h2 class="mb-0"><i class="fas fa-wave-square me-2"></i>Crypto Voice</h2>
+        <div class="timer-badge" id="countdownDisplay">
+            <i class="fas fa-clock me-1"></i> Next update: 10:00
+        </div>
+    </div>
+
+    <div class="container">
+        
+        <div class="d-flex justify-content-between align-items-center mb-3 px-2">
+            <span class="h6 mb-0 text-muted">Voice Alerts</span>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="voiceToggle" style="width: 50px; height: 25px;">
+            </div>
+        </div>
+
+        <div id="coinList">
+            <div class="text-center text-muted mt-5">
+                <i class="fas fa-satellite-dish fa-2x mb-3"></i><br>
+                Connecting to Market...
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <button class="btn btn-primary btn-refresh" id="refreshBtn" onclick="manualRefresh()">
+                <i class="fas fa-sync-alt me-2"></i> Refresh Prices
+            </button>
+            <div class="text-center mt-2">
+                <small class="text-muted" style="font-size: 0.7rem;">
+                    <i class="fas fa-info-circle"></i> Keep app open for updates
+                </small>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="loader">
+        <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status"></div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const API_URL = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin,solana,dogecoin&vs_currencies=usd";
+        const UPDATE_INTERVAL = 10 * 60 * 1000; // 10 Minutes
+        
+        // Coin Metadata
+        const COINS = [
+            { id: 'bitcoin', name: 'Bitcoin', symbol: 'BTC', img: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
+            { id: 'ethereum', name: 'Ethereum', symbol: 'ETH', img: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png' },
+            { id: 'binancecoin', name: 'BNB', symbol: 'BNB', img: 'https://assets.coingecko.com/coins/images/825/large/binance-coin-logo.png' },
+            { id: 'solana', name: 'Solana', symbol: 'SOL', img: 'https://assets.coingecko.com/coins/images/4128/large/solana.png' },
+            { id: 'dogecoin', name: 'Dogecoin', symbol: 'DOGE', img: 'https://assets.coingecko.com/coins/images/5/large/dogecoin.png' }
+        ];
+
+        // State Variables
+        let voiceEnabled = false;
+        let wakeLock = null;
+        let timerInterval;
+        let nextUpdateTimestamp = 0;
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            // Restore Voice Preference
+            const savedVoice = localStorage.getItem('voice_pref');
+            if (savedVoice === 'true') {
+                document.getElementById('voiceToggle').checked = true;
+                voiceEnabled = true;
+            }
+
+            // Initial Fetch
+            fetchData(true); 
+            resetTimer();
+
+            // Event Listeners
+            document.getElementById('voiceToggle').addEventListener('change', toggleVoice);
+            
+            // Re-acquire WakeLock if app comes to foreground
+            document.addEventListener("visibilitychange", async () => {
+                if (document.visibilityState === "visible" && voiceEnabled) {
+                    await requestWakeLock();
+                }
+            });
+        };
+
+        // --- CORE FUNCTIONS ---
+
+        async function fetchData(isFirstRun = false) {
+            showLoader(true);
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error("Network response was not ok");
+                
+                const data = await response.json();
+                updateUI(data, isFirstRun);
+                
+                // Save current prices as "Old Prices" for the NEXT comparison
+                // But only if we successfully got data
+                saveToStorage(data);
+
+            } catch (error) {
+                console.error("Fetch error:", error);
+                // Don't alert user annoyingly, just log it.
+            } finally {
+                showLoader(false);
+            }
+        }
+
+        function updateUI(newData, isFirstRun) {
+            const container = document.getElementById('coinList');
+            container.innerHTML = ""; // Clear existing
+
+            // Get prices stored 10 mins ago
+            const storedData = JSON.parse(localStorage.getItem('crypto_history')) || {};
+            let speechMessages = [];
+
+            COINS.forEach(coin => {
+                const priceInfo = newData[coin.id];
+                if (!priceInfo) return; // Skip if API didn't return this coin
+
+                const currentPrice = priceInfo.usd;
+                const oldPrice = storedData[coin.id];
+                
+                // Calculate Change
+                let changePercent = 0;
+                let changeHtml = '<span class="change-badge bg-neutral">Init...</span>';
+
+                if (oldPrice && oldPrice > 0) {
+                    const diff = currentPrice - oldPrice;
+                    changePercent = ((diff / oldPrice) * 100);
+                    
+                    const isUp = changePercent >= 0;
+                    const colorClass = isUp ? 'bg-up' : 'bg-down';
+                    const icon = isUp ? '<i class="fas fa-arrow-up"></i>' : '<i class="fas fa-arrow-down"></i>';
+                    
+                    changeHtml = `<span class="change-badge ${colorClass}">${icon} ${Math.abs(changePercent).toFixed(2)}%</span>`;
+
+                    // Add to speech queue if change is significant (e.g., not 0) and not first run
+                    if (!isFirstRun && Math.abs(changePercent) > 0.01) {
+                        const direction = isUp ? "up" : "down";
+                        // Speech: "Solana is up 1.5 percent"
+                        speechMessages.push(`${coin.name} is ${direction} ${Math.abs(changePercent).toFixed(1)} percent.`);
+                    }
+                }
+
+                // Create Card HTML
+                const card = document.createElement('div');
+                card.className = "coin-card";
+                card.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <img src="${coin.img}" class="coin-icon me-3" alt="${coin.symbol}">
+                        <div>
+                            <p class="coin-name">${coin.name}</p>
+                            <span class="coin-symbol">${coin.symbol}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="coin-price">$${formatPrice(currentPrice)}</div>
+                        <div class="mt-1 text-end">${changeHtml}</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            // Trigger Voice if enabled and messages exist
+            if (voiceEnabled && speechMessages.length > 0) {
+                speakText(speechMessages.join(". "));
+            }
+        }
+
+        function saveToStorage(data) {
+            // Simplify data structure for storage: { 'bitcoin': 50000, ... }
+            let history = {};
+            COINS.forEach(coin => {
+                if (data[coin.id]) {
+                    history[coin.id] = data[coin.id].usd;
+                }
+            });
+            localStorage.setItem('crypto_history', JSON.stringify(history));
+        }
+
+        // --- TIMER LOGIC ---
+
+        function resetTimer() {
+            nextUpdateTimestamp = Date.now() + UPDATE_INTERVAL;
+            
+            if (timerInterval) clearInterval(timerInterval);
+            
+            timerInterval = setInterval(() => {
+                const now = Date.now();
+                const timeLeft = nextUpdateTimestamp - now;
+
+                if (timeLeft <= 0) {
+                    // Time's up!
+                    fetchData(false); // Fetch and Compare
+                    nextUpdateTimestamp = Date.now() + UPDATE_INTERVAL; // Reset target
+                } else {
+                    // Update UI Countdown
+                    const minutes = Math.floor(timeLeft / 60000);
+                    const seconds = Math.floor((timeLeft % 60000) / 1000);
+                    document.getElementById('countdownDisplay').innerHTML = 
+                        `<i class="fas fa-clock me-1"></i> Update in: ${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+                }
+            }, 1000);
+        }
+
+        function manualRefresh() {
+            // Debounce check could go here, but button visual feedback is usually enough
+            fetchData(false);
+            resetTimer(); // Reset the 10-minute counter on manual refresh
+        }
+
+        // --- UTILS ---
+
+        function formatPrice(price) {
+            // Format: 1,234.56 or 0.123456 depending on value
+            if (price < 1) return price.toFixed(6);
+            return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function showLoader(show) {
+            document.getElementById('loader').style.display = show ? 'block' : 'none';
+            document.getElementById('refreshBtn').disabled = show;
+        }
+
+        // --- AUDIO & WAKELOCK ---
+
+        function toggleVoice(e) {
+            voiceEnabled = e.target.checked;
+            localStorage.setItem('voice_pref', voiceEnabled);
+            
+            if (voiceEnabled) {
+                speakText("Voice alerts enabled.");
+                requestWakeLock();
+            } else {
+                if (wakeLock) {
+                    wakeLock.release()
+                        .then(() => { wakeLock = null; });
+                }
+            }
+        }
+
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                // Cancel previous speech to avoid overlap
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-US';
+                utterance.rate = 1.0;
+                utterance.volume = 1.0;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // Keep Screen Awake (Critical for Background Timer in WebViews)
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Screen Wake Lock active');
+                } catch (err) {
+                    console.log('Wake Lock Error:', err);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
